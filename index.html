@@ -253,6 +253,25 @@ input::placeholder{color:var(--text-faint)}
   </div>
 </div>
 
+<div class="modal-bg" id="exportModal">
+  <div class="modal-card">
+    <div class="modal-title"><i class="ti ti-file-download"></i> Exportar relatório em PDF</div>
+    <div class="modal-text">Escolha o período. Se início e fim forem o mesmo mês, o PDF sai detalhado por item; se abranger mais de um mês, sai um resumo mês a mês.</div>
+    <div class="settings-row">
+      <label class="fl">Mês inicial</label>
+      <input type="month" class="fi2" id="exportMesInicio">
+    </div>
+    <div class="settings-row">
+      <label class="fl">Mês final</label>
+      <input type="month" class="fi2" id="exportMesFim">
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="exportModalCancel">Cancelar</button>
+      <button class="modal-btn primary" id="exportModalGerar"><i class="ti ti-file-download"></i> Gerar PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="settingsModal">
   <div class="modal-card">
     <div class="modal-title"><i class="ti ti-settings"></i> Configurações</div>
