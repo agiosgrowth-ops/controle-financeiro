@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle Financeiro</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ============================================================
+   TEMA — variáveis CSS. Escuro é o padrão (igual ao sistema
+   original); Claro inverte a luminância mantendo as cores de
+   destaque (azul/verde/vermelho/dourado).
+   ============================================================ */
+:root{
+  --bg:#0f1117; --bg-card:#181c27; --bg-input:#1e2336; --bg-input2:#252b3b;
+  --text:#f0f2f8; --text-muted:#8892aa; --text-faint:#555f78;
+  --accent:#4d9ef5; --accent-hover:#7bbcff; --accent-bg:#0e1f3a;
+  --green:#6fc43a; --red:#e05252; --gold:#ffc36b;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+}
+[data-theme="claro"]{
+  --bg:#f4f5f9; --bg-card:#ffffff; --bg-input:#eef0f5; --bg-input2:#e4e7ee;
+  --text:#1a1d29; --text-muted:#5b6478; --text-faint:#98a1b5;
+  --accent:#3d7fd6; --accent-hover:#2c63ad; --accent-bg:#e4eefc;
+  --green:#4a9c22; --red:#c73e3e; --gold:#b8811f;
+  --border:rgba(0,0,0,0.08); --border2:rgba(0,0,0,0.14);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px;transition:background .2s,color .2s}
+input,select,button{font-family:inherit;color:inherit;font-size:inherit}
+input::placeholder{color:var(--text-faint)}
+
+/* ── AUTH ── */
+#authScreen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--bg-card);border:0.5px solid var(--border2);border-radius:16px;padding:32px 28px;max-width:400px;width:100%}
+.auth-logo{width:50px;height:50px;border-radius:13px;background:var(--accent-bg);border:0.5px solid var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.auth-logo i{font-size:24px;color:var(--accent-hover)}
+.auth-title{font-size:22px;font-weight:700;margin-bottom:5px}
+.auth-sub{font-size:13px;color:var(--text-muted);margin-bottom:26px;line-height:1.5}
+.fg{margin-bottom:16px}
+.fl{font-size:11px;color:var(--text-muted);margin-bottom:5px;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.fi2{width:100%;background:var(--bg-input);border:0.5px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);outline:none;font-size:14px;transition:.15s}
+.fi2:focus{border-color:var(--accent);background:var(--bg-input2)}
+.auth-btn{width:100%;padding:13px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-size:15px;font-weight:700;margin-top:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.auth-btn:hover{background:var(--accent-hover)}
+.auth-switch{text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted)}
+.auth-switch a{color:var(--accent);cursor:pointer;font-weight:600}
+.auth-error{background:rgba(224,82,82,0.12);border:0.5px solid var(--red);color:var(--red);border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:14px;display:none}
+
+/* ── APP SHELL ── */
+#mainApp{display:none;flex-direction:column;min-height:100vh}
+#mainApp.show{display:flex}
+.topbar{background:var(--bg-card);border-bottom:0.5px solid var(--border);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;flex-wrap:wrap}
+.tb-left{display:flex;align-items:center;gap:10px}
+.app-icon{width:32px;height:32px;border-radius:9px;background:var(--accent-bg);border:0.5px solid var(--accent);display:flex;align-items:center;justify-content:center}
+.app-icon i{font-size:17px;color:var(--accent-hover)}
+.app-title{font-size:15px;font-weight:700}
+.tb-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{font-size:11px;color:var(--text-faint);background:var(--bg-input);padding:3px 9px;border-radius:20px;border:0.5px solid var(--border);white-space:nowrap}
+.carteira-select{font-size:12px;font-weight:600;background:var(--bg-input);border:0.5px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);cursor:pointer}
+.icon-btn{background:var(--bg-input);border:0.5px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--text-muted);display:flex;align-items:center;cursor:pointer;transition:.15s}
+.icon-btn:hover{background:var(--bg-input2);color:var(--text)}
+
+/* ── TABS (arrastáveis) ── */
+.top-nav{background:var(--bg-card);border-bottom:0.5px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:0;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
+.top-nav::-webkit-scrollbar{display:none}
+.tnav-btn{font-size:13px;font-weight:500;padding:13px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-faint);cursor:grab;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:.15s;flex-shrink:0}
+.tnav-btn i{font-size:15px}
+.tnav-btn:hover{color:var(--text);background:rgba(127,127,127,0.06)}
+.tnav-btn.on{color:var(--accent-hover);border-bottom-color:var(--accent);background:rgba(77,158,245,0.06)}
+.tnav-btn.dragging{opacity:.4}
+.tnav-btn.drag-over{border-left:2px solid var(--accent)}
+
+.page-wrap{flex:1;padding:20px;max-width:1000px;width:100%;margin:0 auto}
+.kg{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kc{background:var(--bg-input);border-radius:8px;padding:13px 15px;border:0.5px solid var(--border)}
+.kl{font-size:11px;color:var(--text-muted);margin-bottom:3px}
+.kv{font-size:20px;font-weight:700}
+.ks{font-size:10px;color:var(--text-faint);margin-top:2px}
+
+.card{background:var(--bg-card);border:0.5px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.row-actions{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.sec-label{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;flex:1}
+.add-btn{font-size:13px;font-weight:700;border-radius:8px;padding:8px 16px;display:flex;align-items:center;gap:5px;border:0.5px solid;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:.1s;background:transparent;color:var(--accent-hover);border-color:var(--accent)}
+.add-btn:hover{background:rgba(77,158,245,0.1)}
+.add-btn:active{transform:scale(.97)}
+
+.cat-tabs{display:flex;border-bottom:0.5px solid var(--border);margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
+.cat-tabs::-webkit-scrollbar{display:none}
+.cat-tab{font-size:13px;font-weight:600;padding:11px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-faint);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:.15s;flex-shrink:0}
+.cat-tab:hover{color:var(--text)}
+.cat-tab.on{color:var(--text);border-bottom-color:var(--accent)}
+
+.tbl-wrap{border:0.5px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.tbl-hd{display:grid;grid-template-columns:24px 1fr 130px 40px;padding:8px 14px;background:var(--bg-input2);border-bottom:0.5px solid var(--border);font-size:11px;color:var(--text-faint);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.tbl-row{display:grid;grid-template-columns:24px 1fr 130px 40px;padding:10px 14px;align-items:center;border-bottom:0.5px solid var(--border);gap:6px}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row:nth-child(even){background:rgba(127,127,127,0.03)}
+.tbl-row.dragging{opacity:.4}
+.tbl-row.drag-over{border-top:2px solid var(--accent)}
+.drag-handle{cursor:grab;color:var(--text-faint);font-size:15px;display:flex;align-items:center;justify-content:center}
+.drag-handle:hover{color:var(--text)}
+.fi{background:transparent;border:none;border-bottom:0.5px solid var(--border2);color:var(--text);padding:3px 0;outline:none;width:100%;font-size:13px;transition:border-color .15s}
+.fi:focus{border-bottom-color:var(--accent)}
+.fi-val{text-align:right;font-weight:600}
+.del-btn{background:none;border:none;color:var(--text-faint);font-size:16px;padding:2px;display:flex;align-items:center;cursor:pointer;transition:.15s;justify-self:end}
+.del-btn:hover{color:var(--red)}
+.total-row{display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding-top:10px;border-top:0.5px solid var(--border2);margin-top:4px}
+.total-row.pos{color:var(--green)}
+.total-row.neg{color:var(--red)}
+.empty{padding:28px 0;text-align:center;color:var(--text-faint);font-size:13px;line-height:1.7}
+.empty i{font-size:30px;display:block;margin:0 auto 8px}
+
+/* ── INVESTIMENTOS / RESERVA ── */
+.div-item{margin-bottom:14px;padding-bottom:14px;border-bottom:0.5px solid var(--border);display:flex;gap:10px;align-items:flex-start}
+.div-item:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.div-body{flex:1}
+.div-header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.div-name-in{font-size:12px;font-weight:700;background:transparent;border:none;border-bottom:0.5px solid var(--border2);color:var(--text);outline:none;flex:1;padding:2px 0}
+.div-val{font-size:17px;font-weight:700;margin-bottom:3px}
+.div-val-in{font-size:17px;font-weight:700;background:transparent;border:none;outline:none;color:var(--text);width:140px}
+.div-bank-in{font-size:12px;background:transparent;border:none;border-bottom:0.5px solid var(--border);color:var(--text-muted);outline:none;width:100%;margin-top:4px;padding:2px 0}
+.pbar-bg{height:5px;background:var(--bg-input2);border-radius:3px;overflow:hidden;margin:8px 0 4px}
+.pbar{height:100%;border-radius:3px;transition:width .4s;background:var(--accent)}
+
+.meta-wrap{background:var(--bg-input);border:0.5px solid var(--border);border-radius:8px;padding:16px 18px;margin-bottom:14px}
+.meta-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:10px;flex-wrap:wrap}
+.meta-block{flex:1;min-width:140px}
+.meta-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.meta-val-in{width:100%;font-size:20px;font-weight:700;text-align:left;background:transparent;border:none;border-bottom:0.5px solid var(--border2);padding:3px 0;color:var(--gold);outline:none}
+.meta-months-in{width:60px;font-size:14px;text-align:center;background:var(--bg-input2);border:0.5px solid var(--border2);border-radius:6px;padding:5px 9px;color:var(--text);outline:none}
+
+/* ── MODAIS ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:900;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-bg.show{display:flex}
+.modal-card{background:var(--bg-card);border:0.5px solid var(--border2);border-radius:14px;padding:24px;max-width:400px;width:100%}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.modal-title i{color:var(--red)}
+.modal-text{font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:20px}
+.modal-text b{color:var(--text)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end}
+.modal-btn{padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:0.5px solid var(--border2);background:var(--bg-input)}
+.modal-btn.danger{background:var(--red);border-color:var(--red);color:#fff}
+.modal-btn.danger:hover{opacity:.88}
+.modal-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+
+#settingsModal .modal-card{max-width:440px}
+.settings-row{margin-bottom:16px}
+.theme-toggle-row{display:flex;gap:8px}
+.theme-opt{flex:1;padding:12px;border-radius:8px;border:0.5px solid var(--border2);background:var(--bg-input);text-align:center;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-muted)}
+.theme-opt.on{border-color:var(--accent);color:var(--accent-hover);background:rgba(77,158,245,0.08)}
+.carteira-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.carteira-row:last-child{border-bottom:none}
+.carteira-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg-input2);color:var(--text-muted)}
+
+/* ── TOAST ── */
+#toastWrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:1100;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--bg-card);border:0.5px solid var(--border2);border-radius:10px;padding:11px 18px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,0.3);animation:toastIn .2s}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast.error{border-color:var(--red);color:var(--red)}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+.loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:1200;display:none;align-items:center;justify-content:center}
+.loading-overlay.show{display:flex}
+.spinner{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:640px){
+  .tbl-hd,.tbl-row{grid-template-columns:20px 1fr 90px 32px}
+  .page-wrap{padding:14px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     TELA DE AUTENTICAÇÃO
+     ============================================================ -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo"><i class="ti ti-wallet"></i></div>
+    <div class="auth-title" id="authTitle">Entrar</div>
+    <div class="auth-sub" id="authSub">Acesse seu controle financeiro.</div>
+    <div class="auth-error" id="authError"></div>
+    <div class="fg">
+      <label class="fl">E-mail</label>
+      <input type="email" class="fi2" id="authEmail" placeholder="seu@email.com">
+    </div>
+    <div class="fg">
+      <label class="fl">Senha</label>
+      <input type="password" class="fi2" id="authPassword" placeholder="••••••••">
+    </div>
+    <button class="auth-btn" id="authSubmitBtn"><i class="ti ti-login"></i> Entrar</button>
+    <div class="auth-switch" id="authSwitch">Não tem conta? <a id="authSwitchLink">Cadastrar</a></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     APP PRINCIPAL
+     ============================================================ -->
+<div id="mainApp">
+  <div class="topbar">
+    <div class="tb-left">
+      <div class="app-icon"><i class="ti ti-wallet"></i></div>
+      <div class="app-title" id="appTitleDisplay">Meu Financeiro</div>
+    </div>
+    <div class="tb-right">
+      <select class="carteira-select" id="carteiraSelect"></select>
+      <span class="chip" id="lastEditChip">Última edição: —</span>
+      <button class="icon-btn" id="themeToggleBtn" title="Alternar tema"><i class="ti ti-moon"></i></button>
+      <button class="icon-btn" id="settingsBtn" title="Configurações"><i class="ti ti-settings"></i></button>
+      <button class="icon-btn" id="logoutBtn" title="Sair"><i class="ti ti-logout"></i></button>
+    </div>
+  </div>
+
+  <div class="top-nav" id="topNav"></div>
+
+  <div class="page-wrap" id="pageWrap"></div>
+</div>
+
+<!-- ============================================================
+     MODAIS
+     ============================================================ -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal-card">
+    <div class="modal-title"><i class="ti ti-alert-triangle"></i> Confirmar exclusão</div>
+    <div class="modal-text">Tem certeza que deseja excluir <b id="confirmModalItemName">este item</b>? Essa ação não pode ser desfeita.</div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="confirmModalCancel">Cancelar</button>
+      <button class="modal-btn danger" id="confirmModalOk">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="settingsModal">
+  <div class="modal-card">
+    <div class="modal-title"><i class="ti ti-settings"></i> Configurações</div>
+    <div class="settings-row">
+      <label class="fl">Nome do sistema</label>
+      <input type="text" class="fi2" id="settingsAppName" placeholder="Ex: Meu Financeiro">
+    </div>
+    <div class="settings-row">
+      <label class="fl">Tema</label>
+      <div class="theme-toggle-row">
+        <div class="theme-opt" id="themeOptEscuro" data-theme-val="escuro">Escuro</div>
+        <div class="theme-opt" id="themeOptClaro" data-theme-val="claro">Claro</div>
+      </div>
+    </div>
+    <div class="settings-row">
+      <label class="fl">Carteiras</label>
+      <div id="settingsCarteirasList"></div>
+      <button class="add-btn" id="addCarteiraBtn" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-plus"></i> Nova carteira</button>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="settingsClose">Fechar</button>
+      <button class="modal-btn primary" id="settingsSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastWrap"></div>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO — preencha com os dados do seu projeto Supabase
+// (Painel Supabase → Settings → API → Project URL / anon public key)
+// ============================================================
+const SUPABASE_CONFIG = {
+  url: 'https://ncgamnuwmdsrmacjjety.supabase.co',
+  anonKey: 'sb_publishable_5vaocFoXCB2FDJ9i1fPEfQ_aAWZEtIa',
+};
+</script>
+<script src="app.js"></script>
+</body>
+</html>
