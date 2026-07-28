@@ -10,9 +10,10 @@ let state = {
   user: null,
   carteiras: [],
   carteiraAtualId: null,
-  abas: ['entradas_saidas', 'investimentos', 'reserva_emergencia'],
+  abas: ['entradas_saidas', 'investimentos', 'reserva_emergencia', 'analises'],
   abaAtual: 'entradas_saidas',
   esView: 'entrada', // sub-view dentro de Entradas/Saídas
+  mesAtual: new Date().toISOString().slice(0, 7), // 'YYYY-MM' — mês navegável (Entradas/Saídas e Análises)
   transacoes: [],
   metaReserva: null,
   aportesReserva: [],
@@ -26,7 +27,20 @@ const ABA_META = {
   entradas_saidas: { label: 'Entradas & Saídas', icon: 'ti-arrows-exchange' },
   investimentos: { label: 'Investimentos', icon: 'ti-chart-line' },
   reserva_emergencia: { label: 'Reserva de Emergência', icon: 'ti-shield-check' },
+  analises: { label: 'Análises', icon: 'ti-chart-bar' },
 };
+
+const MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function mesLabelFmt(mesStr) {
+  const [ano, mes] = mesStr.split('-').map(Number);
+  return `${MESES_PT[mes - 1]} de ${ano}`;
+}
+function mesHojeStr() { return new Date().toISOString().slice(0, 7); }
+function somarMeses(mesStr, delta) {
+  const [ano, mes] = mesStr.split('-').map(Number);
+  const d = new Date(ano, mes - 1 + delta, 1);
+  return d.toISOString().slice(0, 7);
+}
 
 // ============================================================
 // UTIL
@@ -292,27 +306,61 @@ function habilitarDrag(el, container, selector, onDrop) {
 }
 
 // ============================================================
+// BARRA DE MÊS — visível apenas em Entradas/Saídas e Análises
+// (Investimentos e Reserva são saldo acumulado, não fazem sentido por mês)
+// ============================================================
+function renderMesBar() {
+  const visivel = ['entradas_saidas', 'analises'].includes(state.abaAtual);
+  document.getElementById('monthBarWrap').style.display = visivel ? 'flex' : 'none';
+  document.getElementById('mesLabel').textContent = mesLabelFmt(state.mesAtual);
+}
+document.getElementById('mesPrevBtn').addEventListener('click', () => {
+  state.mesAtual = somarMeses(state.mesAtual, -1);
+  renderMesBar();
+  renderPagina();
+});
+document.getElementById('mesNextBtn').addEventListener('click', () => {
+  state.mesAtual = somarMeses(state.mesAtual, 1);
+  renderMesBar();
+  renderPagina();
+});
+document.getElementById('mesHojeBtn').addEventListener('click', () => {
+  state.mesAtual = mesHojeStr();
+  renderMesBar();
+  renderPagina();
+});
+
+// ============================================================
 // RENDER DE PÁGINA (roteador simples entre abas)
 // ============================================================
 function renderPagina() {
   const wrap = document.getElementById('pageWrap');
+  renderMesBar();
   if (state.abaAtual === 'entradas_saidas') wrap.innerHTML = renderEntradasSaidas();
   else if (state.abaAtual === 'investimentos') wrap.innerHTML = renderInvestimentos();
   else if (state.abaAtual === 'reserva_emergencia') wrap.innerHTML = renderReserva();
+  else if (state.abaAtual === 'analises') { wrap.innerHTML = renderAnalises(); }
   ligarEventosPagina();
+  if (state.abaAtual === 'analises') montarGraficos();
 }
 
 // ============================================================
 // ENTRADAS & SAÍDAS
 // ============================================================
-function listaPorTipoNatureza(tipo, natureza) {
-  return state.transacoes.filter((t) => t.tipo === tipo && t.natureza === natureza && !(t.natureza === 'investimento'));
+// mesFiltro: string 'YYYY-MM' para restringir por mês, ou null para trazer tudo
+// (usado pelos gráficos, que precisam do histórico completo)
+function listaPorTipoNatureza(tipo, natureza, mesFiltro = state.mesAtual) {
+  return state.transacoes.filter((t) =>
+    t.tipo === tipo && t.natureza === natureza && t.natureza !== 'investimento' &&
+    (mesFiltro === null || t.data.startsWith(mesFiltro))
+  );
 }
 function somaLista(arr) { return arr.reduce((s, t) => s + Number(t.valor || 0), 0); }
 
 function renderEntradasSaidas() {
-  const totalEntradas = somaLista(state.transacoes.filter((t) => t.tipo === 'entrada'));
-  const totalSaidas = somaLista(state.transacoes.filter((t) => t.tipo === 'saida'));
+  const doMes = (t) => t.tipo && t.natureza !== 'investimento' && t.data.startsWith(state.mesAtual);
+  const totalEntradas = somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && doMes(t)));
+  const totalSaidas = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && doMes(t)));
   const saldo = totalEntradas - totalSaidas;
 
   const fixas = listaPorTipoNatureza(state.esView, 'fixo');
@@ -412,7 +460,7 @@ function renderReserva() {
   const meta = state.metaReserva?.valor_limite || 0;
   const pct = meta > 0 ? Math.min(100, (valorAtual / meta) * 100).toFixed(1) : '0.0';
 
-  const gastosFixos = somaLista(listaPorTipoNatureza('saida', 'fixo'));
+  const gastosFixos = somaLista(listaPorTipoNatureza('saida', 'fixo', mesHojeStr()));
   const mesesCobertos = gastosFixos > 0 ? (valorAtual / gastosFixos).toFixed(1) : '—';
 
   return `
@@ -446,6 +494,85 @@ function renderReserva() {
       </div>
     </div>
   `;
+}
+
+// ============================================================
+// ANÁLISES — gráficos de evolução mensal e composição de gastos
+// ============================================================
+let chartLinha = null;
+let chartPizza = null;
+
+function renderAnalises() {
+  return `
+    <div class="chart-card">
+      <div class="card-title"><i class="ti ti-chart-line"></i> Entradas x Saídas — últimos 12 meses</div>
+      <div class="chart-wrap"><canvas id="chartLinha"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="card-title"><i class="ti ti-chart-pie"></i> Para onde foi o dinheiro em ${mesLabelFmt(state.mesAtual)}</div>
+      <div class="chart-wrap"><canvas id="chartPizza"></canvas></div>
+    </div>
+  `;
+}
+
+function ultimosNMeses(n) {
+  const meses = [];
+  let m = state.mesAtual;
+  for (let i = n - 1; i >= 0; i--) meses.push(somarMeses(m, -i));
+  return meses;
+}
+
+function montarGraficos() {
+  const meses = ultimosNMeses(12);
+  const entradasPorMes = meses.map((m) =>
+    somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && t.natureza !== 'investimento' && t.data.startsWith(m)))
+  );
+  const saidasPorMes = meses.map((m) =>
+    somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(m)))
+  );
+
+  if (chartLinha) chartLinha.destroy();
+  const ctxLinha = document.getElementById('chartLinha');
+  if (ctxLinha) {
+    chartLinha = new Chart(ctxLinha, {
+      type: 'line',
+      data: {
+        labels: meses.map((m) => mesLabelFmt(m).replace(' de ', '/')),
+        datasets: [
+          { label: 'Entradas', data: entradasPorMes, borderColor: '#6fc43a', backgroundColor: 'rgba(111,196,58,0.1)', tension: .3, fill: true },
+          { label: 'Saídas', data: saidasPorMes, borderColor: '#e05252', backgroundColor: 'rgba(224,82,82,0.1)', tension: .3, fill: true },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { ticks: { callback: (v) => 'R$' + v } } },
+        plugins: { legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--text') } } },
+      },
+    });
+  }
+
+  const saidasDoMes = state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(state.mesAtual) && t.valor > 0);
+  const porDescricao = {};
+  saidasDoMes.forEach((t) => { porDescricao[t.descricao] = (porDescricao[t.descricao] || 0) + Number(t.valor); });
+  const labels = Object.keys(porDescricao);
+  const valores = Object.values(porDescricao);
+  const cores = ['#4d9ef5','#6fc43a','#ffc36b','#e05252','#7bbcff','#b58aef','#4dd0c4','#f5a84d','#f56ba0','#8892aa'];
+
+  if (chartPizza) chartPizza.destroy();
+  const ctxPizza = document.getElementById('chartPizza');
+  if (ctxPizza) {
+    if (!labels.length) {
+      ctxPizza.getContext('2d').font = '13px sans-serif';
+    }
+    chartPizza = new Chart(ctxPizza, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: valores, backgroundColor: cores, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--text'), boxWidth: 12 } } },
+      },
+    });
+  }
 }
 
 // ============================================================
@@ -516,10 +643,15 @@ async function criarTransacao({ tipo, natureza, descricao, valor, observacao = n
   showLoading(true);
   try {
     const maxOrdem = Math.max(0, ...state.transacoes.map((t) => t.ordem || 0));
+    // Entradas/Saídas: cria no mês que está sendo visualizado.
+    // Investimentos e aportes de reserva não são filtrados por mês, usa a data de hoje.
+    const dataLancamento = natureza === 'investimento'
+      ? new Date().toISOString().split('T')[0]
+      : `${state.mesAtual}-01`;
     const { data, error } = await sb.from('transacoes').insert({
       carteira_id: state.carteiraAtualId,
       descricao, valor, tipo, natureza, observacao,
-      data: new Date().toISOString().split('T')[0],
+      data: dataLancamento,
       origem: 'manual', status: 'confirmado', ordem: maxOrdem + 1,
     }).select().single();
     if (error) throw error;
