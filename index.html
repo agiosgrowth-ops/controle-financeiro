@@ -28,6 +28,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2.9.7/pluggy-connect.js"></script>
 <style>
 /* ============================================================
    TEMA — variáveis CSS. Escuro é o padrão (igual ao sistema
@@ -185,6 +186,12 @@ input::placeholder{color:var(--text-faint)}
 .carteira-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border)}
 .carteira-row:last-child{border-bottom:none}
 .carteira-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--bg-input2);color:var(--text-muted)}
+.conta-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border)}
+.conta-row:last-child{border-bottom:none}
+.conta-info{flex:1}
+.conta-nome{font-size:13px;font-weight:600}
+.conta-detalhe{font-size:11px;color:var(--text-faint)}
+.conta-saldo{font-size:13px;font-weight:700;color:var(--green)}
 
 /* ── TOAST ── */
 #toastWrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:1100;display:flex;flex-direction:column;gap:8px;align-items:center}
@@ -304,6 +311,11 @@ input::placeholder{color:var(--text-faint)}
         <div class="theme-opt" id="themeOptEscuro" data-theme-val="escuro">Escuro</div>
         <div class="theme-opt" id="themeOptClaro" data-theme-val="claro">Claro</div>
       </div>
+    </div>
+    <div class="settings-row">
+      <label class="fl">Contas bancárias conectadas</label>
+      <div id="settingsContasList"></div>
+      <button class="add-btn" id="conectarBancoBtn" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-building-bank"></i> Conectar banco</button>
     </div>
     <div class="settings-row">
       <label class="fl">Carteiras</label>
