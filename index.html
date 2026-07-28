@@ -3,7 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Financeiro">
+<meta name="application-name" content="Controle Financeiro">
+<meta name="theme-color" content="#0f1117">
+<meta name="description" content="Controle financeiro pessoal e multi-carteira — entradas, saídas, investimentos e reserva de emergência">
 <title>Controle Financeiro</title>
+<script>
+// ── MANIFESTO PWA INLINE ── habilita "Instalar app" / "Adicionar à tela inicial"
+(function(){
+  var icons=[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%230f1117'/%3E%3Crect x='80' y='200' width='352' height='240' rx='24' fill='none' stroke='%234d9ef5' stroke-width='28'/%3E%3Cpath d='M80 260h352' stroke='%234d9ef5' stroke-width='28'/%3E%3Crect x='160' y='120' width='80' height='100' rx='16' fill='%234d9ef5'/%3E%3Crect x='272' y='120' width='80' height='100' rx='16' fill='%234d9ef5'/%3E%3Crect x='120' y='310' width='60' height='36' rx='8' fill='%236fc43a'/%3E%3Crect x='226' y='310' width='60' height='36' rx='8' fill='%236fc43a'/%3E%3Crect x='332' y='310' width='60' height='36' rx='8' fill='%23e05252'/%3E%3C/svg%3E",sizes:"512x512",type:"image/svg+xml",purpose:"any maskable"}];
+  var appName = localStorage.getItem('cf_app_name') || 'Meu Financeiro';
+  var manifest={name:appName,short_name:"Financeiro",description:"Controle financeiro pessoal e multi-carteira",start_url:"./",display:"standalone",background_color:"#0f1117",theme_color:"#0f1117",orientation:"any",icons:icons,categories:["finance","productivity"]};
+  var blob=new Blob([JSON.stringify(manifest)],{type:"application/json"});
+  var url=URL.createObjectURL(blob);
+  var link=document.createElement("link");
+  link.rel="manifest";link.href=url;
+  document.head.appendChild(link);
+})();
+</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
