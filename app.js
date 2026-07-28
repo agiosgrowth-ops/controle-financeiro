@@ -847,6 +847,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   document.getElementById('appTitleDisplay').textContent = state.appName;
   atualizarThemeOpts();
   renderCarteirasSettings();
+  carregarContasBancarias();
   document.getElementById('settingsModal').classList.add('show');
 });
 document.getElementById('settingsClose').addEventListener('click', () =>
@@ -880,6 +881,81 @@ function renderCarteirasSettings() {
     });
   });
 }
+
+// ============================================================
+// CONTAS BANCÁRIAS CONECTADAS (Pluggy)
+// ============================================================
+async function carregarContasBancarias() {
+  const list = document.getElementById('settingsContasList');
+  list.innerHTML = '<div class="empty" style="padding:12px 0"><i class="ti ti-loader"></i> Carregando...</div>';
+  const { data: contas, error } = await sb.from('contas_conectadas')
+    .select('*').eq('carteira_id', state.carteiraAtualId).eq('ativa', true);
+  if (error) { list.innerHTML = '<div class="empty" style="padding:12px 0">Erro ao carregar contas.</div>'; return; }
+  if (!contas.length) {
+    list.innerHTML = '<div class="empty" style="padding:12px 0">Nenhuma conta conectada nesta carteira ainda.</div>';
+    return;
+  }
+  list.innerHTML = contas.map((c) => `
+    <div class="conta-row">
+      <div class="conta-info">
+        <div class="conta-nome">${escapeHtml(c.banco)} ${c.apelido ? '· ' + escapeHtml(c.apelido) : ''}</div>
+        <div class="conta-detalhe">${c.pluggy_account_id ? (c.tipo_conta || 'conta') : 'sincronizando...'} ${c.ultima_sincronizacao ? '· atualizado ' + new Date(c.ultima_sincronizacao).toLocaleString('pt-BR') : ''}</div>
+      </div>
+      <div class="conta-saldo">${c.pluggy_account_id ? fmtMoeda(c.saldo_atual) : '—'}</div>
+    </div>`).join('');
+}
+
+async function conectarBanco() {
+  if (typeof PluggyConnect === 'undefined') {
+    showToast('Widget da Pluggy não carregou. Verifica sua conexão e tenta de novo.', 'error');
+    return;
+  }
+  showLoading(true);
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/pluggy-connect-token`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const result = await res.json();
+    if (!res.ok || !result.accessToken) throw new Error(result.error || 'Falha ao gerar token de conexão.');
+
+    const pluggyConnect = new PluggyConnect({
+      connectToken: result.accessToken,
+      includeSandbox: true, // sandbox habilitado — permite testar com bancos simulados antes de conectar o real
+      onSuccess: async (itemData) => {
+        showLoading(true);
+        try {
+          const bancoNome = itemData.item?.connector?.name || 'Banco';
+          // Cria o "placeholder" que o webhook usa para saber a qual carteira essa conta pertence
+          const { error: insErr } = await sb.from('contas_conectadas').insert({
+            carteira_id: state.carteiraAtualId,
+            pluggy_item_id: itemData.item.id,
+            banco: bancoNome,
+            tipo_conta: 'corrente',
+          });
+          if (insErr) throw insErr;
+          showToast(`${bancoNome} conectado! A sincronização das transações pode levar alguns instantes.`);
+          marcarEdicao();
+          carregarContasBancarias();
+        } catch (err) {
+          showToast('Conta autorizada, mas houve erro ao vincular à carteira.', 'error');
+        } finally {
+          showLoading(false);
+        }
+      },
+      onError: (err) => {
+        console.error('Erro Pluggy Connect:', err);
+        showToast('A conexão bancária foi cancelada ou falhou.', 'error');
+      },
+    });
+    pluggyConnect.init();
+  } catch (err) {
+    showToast('Erro ao iniciar conexão bancária.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+document.getElementById('conectarBancoBtn').addEventListener('click', conectarBanco);
 
 document.getElementById('addCarteiraBtn').addEventListener('click', async () => {
   const tipo = confirm('Clique OK para PJ, ou Cancelar para PF.') ? 'PJ' : 'PF';
