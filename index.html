@@ -6,6 +6,8 @@
 <title>Controle Financeiro</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* ============================================================
@@ -64,6 +66,15 @@ input::placeholder{color:var(--text-faint)}
 .icon-btn:hover{background:var(--bg-input2);color:var(--text)}
 
 /* ── TABS (arrastáveis) ── */
+.month-bar-wrap{background:var(--bg-card);border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;gap:14px;padding:9px 16px;flex-shrink:0}
+.month-nav-btn{background:var(--bg-input);border:0.5px solid var(--border2);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);cursor:pointer}
+.month-nav-btn:hover{background:var(--bg-input2);color:var(--text)}
+.month-label{font-size:13px;font-weight:700;min-width:130px;text-align:center;text-transform:capitalize}
+.month-today-btn{font-size:11px;color:var(--accent-hover);cursor:pointer;font-weight:600}
+
+.chart-card{background:var(--bg-card);border:0.5px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.chart-wrap{position:relative;height:260px}
+
 .top-nav{background:var(--bg-card);border-bottom:0.5px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:0;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
 .top-nav::-webkit-scrollbar{display:none}
 .tnav-btn{font-size:13px;font-weight:500;padding:13px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text-faint);cursor:grab;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:.15s;flex-shrink:0}
@@ -217,6 +228,13 @@ input::placeholder{color:var(--text-faint)}
   </div>
 
   <div class="top-nav" id="topNav"></div>
+
+  <div class="month-bar-wrap" id="monthBarWrap">
+    <button class="month-nav-btn" id="mesPrevBtn"><i class="ti ti-chevron-left"></i></button>
+    <span class="month-label" id="mesLabel"></span>
+    <button class="month-nav-btn" id="mesNextBtn"><i class="ti ti-chevron-right"></i></button>
+    <span class="month-today-btn" id="mesHojeBtn">Hoje</span>
+  </div>
 
   <div class="page-wrap" id="pageWrap"></div>
 </div>
