@@ -504,6 +504,11 @@ let chartPizza = null;
 
 function renderAnalises() {
   return `
+    <div class="row-actions" style="margin-bottom:14px">
+      <div class="sec-label"><i class="ti ti-file-analytics"></i> Relatórios</div>
+      <button class="add-btn" id="exportarMesBtn"><i class="ti ti-file-download"></i> Exportar PDF do mês</button>
+      <button class="add-btn" id="exportarAnoBtn"><i class="ti ti-file-download"></i> Exportar PDF do ano</button>
+    </div>
     <div class="chart-card">
       <div class="card-title"><i class="ti ti-chart-line"></i> Entradas x Saídas — últimos 12 meses</div>
       <div class="chart-wrap"><canvas id="chartLinha"></canvas></div>
@@ -576,10 +581,92 @@ function montarGraficos() {
 }
 
 // ============================================================
+// EXPORTAÇÃO EM PDF
+// ============================================================
+function cabecalhoPdf(doc, subtitulo) {
+  const carteira = state.carteiras.find((c) => c.id === state.carteiraAtualId);
+  doc.setFontSize(16);
+  doc.text(state.appName, 14, 18);
+  doc.setFontSize(11);
+  doc.setTextColor(100);
+  doc.text(`${subtitulo} — Carteira: ${carteira ? carteira.nome : ''}`, 14, 25);
+  doc.setTextColor(0);
+}
+
+function exportarPdfMes() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  cabecalhoPdf(doc, `Relatório de ${mesLabelFmt(state.mesAtual)}`);
+
+  const grupos = [
+    ['Entradas Fixas', listaPorTipoNatureza('entrada', 'fixo')],
+    ['Entradas Variáveis', listaPorTipoNatureza('entrada', 'variavel')],
+    ['Saídas Fixas', listaPorTipoNatureza('saida', 'fixo')],
+    ['Saídas Variáveis', listaPorTipoNatureza('saida', 'variavel')],
+  ];
+
+  let y = 34;
+  grupos.forEach(([titulo, itens]) => {
+    if (!itens.length) return;
+    doc.autoTable({
+      startY: y,
+      head: [[titulo, 'Valor']],
+      body: itens.map((t) => [t.descricao, fmtMoeda(t.valor)]),
+      foot: [['Total', fmtMoeda(somaLista(itens))]],
+      theme: 'grid',
+      headStyles: { fillColor: [77, 158, 245] },
+      footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  });
+
+  doc.save(`relatorio-${state.mesAtual}.pdf`);
+  showToast('PDF do mês exportado.');
+}
+
+function exportarPdfAno() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const ano = state.mesAtual.split('-')[0];
+  cabecalhoPdf(doc, `Visão anual ${ano}`);
+
+  const linhas = [];
+  let totalEntradas = 0, totalSaidas = 0, totalInvest = 0;
+  for (let m = 1; m <= 12; m++) {
+    const mesStr = `${ano}-${String(m).padStart(2, '0')}`;
+    const ent = somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
+    const sai = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
+    const inv = somaLista(state.transacoes.filter((t) => t.natureza === 'investimento' && t.data.startsWith(mesStr)));
+    totalEntradas += ent; totalSaidas += sai; totalInvest += inv;
+    linhas.push([MESES_PT[m - 1], fmtMoeda(ent), fmtMoeda(sai), fmtMoeda(inv), fmtMoeda(ent - sai)]);
+  }
+
+  doc.autoTable({
+    startY: 34,
+    head: [['Mês', 'Entradas', 'Saídas', 'Investido', 'Saldo']],
+    body: linhas,
+    foot: [['Total do ano', fmtMoeda(totalEntradas), fmtMoeda(totalSaidas), fmtMoeda(totalInvest), fmtMoeda(totalEntradas - totalSaidas)]],
+    theme: 'grid',
+    headStyles: { fillColor: [77, 158, 245] },
+    footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
+    margin: { left: 14, right: 14 },
+  });
+
+  doc.save(`relatorio-anual-${ano}.pdf`);
+  showToast('PDF anual exportado.');
+}
+
+// ============================================================
 // EVENTOS DA PÁGINA (delegação, re-ligados a cada render)
 // ============================================================
 function ligarEventosPagina() {
   const wrap = document.getElementById('pageWrap');
+
+  const exportMesBtn = document.getElementById('exportarMesBtn');
+  if (exportMesBtn) exportMesBtn.addEventListener('click', exportarPdfMes);
+  const exportAnoBtn = document.getElementById('exportarAnoBtn');
+  if (exportAnoBtn) exportAnoBtn.addEventListener('click', exportarPdfAno);
 
   // cat-tabs Entradas/Saídas
   wrap.querySelectorAll('[data-esview]').forEach((b) => b.addEventListener('click', () => {
