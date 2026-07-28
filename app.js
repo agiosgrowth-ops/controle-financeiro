@@ -506,8 +506,7 @@ function renderAnalises() {
   return `
     <div class="row-actions" style="margin-bottom:14px">
       <div class="sec-label"><i class="ti ti-file-analytics"></i> Relatórios</div>
-      <button class="add-btn" id="exportarMesBtn"><i class="ti ti-file-download"></i> Exportar PDF do mês</button>
-      <button class="add-btn" id="exportarAnoBtn"><i class="ti ti-file-download"></i> Exportar PDF do ano</button>
+      <button class="add-btn" id="abrirExportModalBtn"><i class="ti ti-file-download"></i> Exportar PDF</button>
     </div>
     <div class="chart-card">
       <div class="card-title"><i class="ti ti-chart-line"></i> Entradas x Saídas — últimos 12 meses</div>
@@ -581,8 +580,25 @@ function montarGraficos() {
 }
 
 // ============================================================
-// EXPORTAÇÃO EM PDF
+// EXPORTAÇÃO EM PDF — por período (mês inicial/final escolhidos)
 // ============================================================
+function abrirExportModal() {
+  document.getElementById('exportMesInicio').value = state.mesAtual;
+  document.getElementById('exportMesFim').value = state.mesAtual;
+  document.getElementById('exportModal').classList.add('show');
+}
+document.getElementById('exportModalCancel').addEventListener('click', () =>
+  document.getElementById('exportModal').classList.remove('show'));
+document.getElementById('exportModalGerar').addEventListener('click', () => {
+  const ini = document.getElementById('exportMesInicio').value;
+  const fim = document.getElementById('exportMesFim').value;
+  if (!ini || !fim) { showToast('Escolha os dois meses.', 'error'); return; }
+  if (ini > fim) { showToast('O mês inicial não pode ser depois do final.', 'error'); return; }
+  document.getElementById('exportModal').classList.remove('show');
+  if (ini === fim) exportarPdfMes(ini);
+  else exportarPdfPeriodo(ini, fim);
+});
+
 function cabecalhoPdf(doc, subtitulo) {
   const carteira = state.carteiras.find((c) => c.id === state.carteiraAtualId);
   doc.setFontSize(16);
@@ -593,21 +609,24 @@ function cabecalhoPdf(doc, subtitulo) {
   doc.setTextColor(0);
 }
 
-function exportarPdfMes() {
+// Relatório detalhado de um único mês (item por item)
+function exportarPdfMes(mesStr) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  cabecalhoPdf(doc, `Relatório de ${mesLabelFmt(state.mesAtual)}`);
+  cabecalhoPdf(doc, `Relatório de ${mesLabelFmt(mesStr)}`);
 
   const grupos = [
-    ['Entradas Fixas', listaPorTipoNatureza('entrada', 'fixo')],
-    ['Entradas Variáveis', listaPorTipoNatureza('entrada', 'variavel')],
-    ['Saídas Fixas', listaPorTipoNatureza('saida', 'fixo')],
-    ['Saídas Variáveis', listaPorTipoNatureza('saida', 'variavel')],
+    ['Entradas Fixas', listaPorTipoNatureza('entrada', 'fixo', mesStr)],
+    ['Entradas Variáveis', listaPorTipoNatureza('entrada', 'variavel', mesStr)],
+    ['Saídas Fixas', listaPorTipoNatureza('saida', 'fixo', mesStr)],
+    ['Saídas Variáveis', listaPorTipoNatureza('saida', 'variavel', mesStr)],
   ];
 
   let y = 34;
+  let algumGrupo = false;
   grupos.forEach(([titulo, itens]) => {
     if (!itens.length) return;
+    algumGrupo = true;
     doc.autoTable({
       startY: y,
       head: [[titulo, 'Valor']],
@@ -620,41 +639,45 @@ function exportarPdfMes() {
     });
     y = doc.lastAutoTable.finalY + 8;
   });
+  if (!algumGrupo) doc.text('Nenhum lançamento neste mês.', 14, y);
 
-  doc.save(`relatorio-${state.mesAtual}.pdf`);
-  showToast('PDF do mês exportado.');
+  doc.save(`relatorio-${mesStr}.pdf`);
+  showToast('PDF exportado.');
 }
 
-function exportarPdfAno() {
+// Resumo mês a mês para um período com mais de um mês
+function exportarPdfPeriodo(mesIni, mesFim) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const ano = state.mesAtual.split('-')[0];
-  cabecalhoPdf(doc, `Visão anual ${ano}`);
+  cabecalhoPdf(doc, `Resumo de ${mesLabelFmt(mesIni)} até ${mesLabelFmt(mesFim)}`);
+
+  const meses = [];
+  let m = mesIni;
+  while (m <= mesFim) { meses.push(m); m = somarMeses(m, 1); }
 
   const linhas = [];
   let totalEntradas = 0, totalSaidas = 0, totalInvest = 0;
-  for (let m = 1; m <= 12; m++) {
-    const mesStr = `${ano}-${String(m).padStart(2, '0')}`;
+  meses.forEach((mesStr) => {
     const ent = somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
     const sai = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
     const inv = somaLista(state.transacoes.filter((t) => t.natureza === 'investimento' && t.data.startsWith(mesStr)));
     totalEntradas += ent; totalSaidas += sai; totalInvest += inv;
-    linhas.push([MESES_PT[m - 1], fmtMoeda(ent), fmtMoeda(sai), fmtMoeda(inv), fmtMoeda(ent - sai)]);
-  }
+    linhas.push([mesLabelFmt(mesStr), fmtMoeda(ent), fmtMoeda(sai), fmtMoeda(inv), fmtMoeda(ent - sai)]);
+  });
 
   doc.autoTable({
     startY: 34,
     head: [['Mês', 'Entradas', 'Saídas', 'Investido', 'Saldo']],
     body: linhas,
-    foot: [['Total do ano', fmtMoeda(totalEntradas), fmtMoeda(totalSaidas), fmtMoeda(totalInvest), fmtMoeda(totalEntradas - totalSaidas)]],
+    foot: [['Total do período', fmtMoeda(totalEntradas), fmtMoeda(totalSaidas), fmtMoeda(totalInvest), fmtMoeda(totalEntradas - totalSaidas)]],
     theme: 'grid',
     headStyles: { fillColor: [77, 158, 245] },
     footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
     margin: { left: 14, right: 14 },
   });
 
-  doc.save(`relatorio-anual-${ano}.pdf`);
-  showToast('PDF anual exportado.');
+  doc.save(`relatorio-${mesIni}-a-${mesFim}.pdf`);
+  showToast('PDF exportado.');
 }
 
 // ============================================================
@@ -663,10 +686,8 @@ function exportarPdfAno() {
 function ligarEventosPagina() {
   const wrap = document.getElementById('pageWrap');
 
-  const exportMesBtn = document.getElementById('exportarMesBtn');
-  if (exportMesBtn) exportMesBtn.addEventListener('click', exportarPdfMes);
-  const exportAnoBtn = document.getElementById('exportarAnoBtn');
-  if (exportAnoBtn) exportAnoBtn.addEventListener('click', exportarPdfAno);
+  const abrirExportBtn = document.getElementById('abrirExportModalBtn');
+  if (abrirExportBtn) abrirExportBtn.addEventListener('click', abrirExportModal);
 
   // cat-tabs Entradas/Saídas
   wrap.querySelectorAll('[data-esview]').forEach((b) => b.addEventListener('click', () => {
