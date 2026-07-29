@@ -21,6 +21,7 @@ let state = {
   appName: 'Meu Financeiro',
   pendingDelete: null, // { type, id, label }
   authMode: 'login',
+  visaoAnualTipo: 'barra', // 'barra' | 'linha' — tipo de gráfico da Visão Anual
 };
 
 const ABA_META = {
@@ -35,11 +36,18 @@ function mesLabelFmt(mesStr) {
   const [ano, mes] = mesStr.split('-').map(Number);
   return `${MESES_PT[mes - 1]} de ${ano}`;
 }
+function mesAbrevFmt(mesStr) {
+  const nome = mesLabelFmt(mesStr).split(' de ')[0].slice(0, 3);
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+}
 function mesHojeStr() { return new Date().toISOString().slice(0, 7); }
 function somarMeses(mesStr, delta) {
   const [ano, mes] = mesStr.split('-').map(Number);
   const d = new Date(ano, mes - 1 + delta, 1);
   return d.toISOString().slice(0, 7);
+}
+function mesesDoAno(ano) {
+  return Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`);
 }
 
 // ============================================================
@@ -497,37 +505,72 @@ function renderReserva() {
 }
 
 // ============================================================
-// ANÁLISES — gráficos de evolução mensal e composição de gastos
+// ANÁLISES — gráficos de evolução anual e composição de gastos
 // ============================================================
 let chartLinha = null;
 let chartPizza = null;
 
+function renderDivisaoSaldos() {
+  const doMes = (t) => t.data.startsWith(state.mesAtual);
+  const fixas = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza === 'fixo' && doMes(t)));
+  const variaveis = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza === 'variavel' && doMes(t)));
+  const investido = somaLista(state.transacoes.filter((t) => t.natureza === 'investimento' && doMes(t)));
+  const total = fixas + variaveis + investido;
+  const pct = (v) => (total > 0 ? ((v / total) * 100).toFixed(0) : '0');
+
+  const linha = (label, valor, cor) => `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+        <span>${label}</span><span style="color:var(--text-faint)">${pct(valor)}%</span>
+      </div>
+      <div style="font-weight:600;font-size:16px;color:${cor};margin-bottom:6px">${fmtMoeda(valor)}</div>
+      <div class="pbar-bg"><div class="pbar" style="width:${pct(valor)}%;background:${cor}"></div></div>
+    </div>`;
+
+  return `
+    <div class="chart-card">
+      <div class="card-title"><i class="ti ti-chart-donut"></i> DIVISÃO DE SALDOS</div>
+      ${total > 0 ? `
+        ${linha('Contas fixas', fixas, 'var(--red)')}
+        ${linha('Gastos variáveis', variaveis, 'var(--gold)')}
+        ${linha('Investido / Reserva', investido, 'var(--accent-hover)')}
+      ` : `<div class="empty"><i class="ti ti-inbox"></i>Sem movimentação em ${mesLabelFmt(state.mesAtual)}.</div>`}
+    </div>`;
+}
+
 function renderAnalises() {
+  const anoAtual = state.mesAtual.split('-')[0];
   return `
     <div class="row-actions" style="margin-bottom:14px">
       <div class="sec-label"><i class="ti ti-file-analytics"></i> Relatórios</div>
       <button class="add-btn" id="abrirExportModalBtn"><i class="ti ti-file-download"></i> Exportar PDF</button>
     </div>
     <div class="chart-card">
-      <div class="card-title"><i class="ti ti-chart-line"></i> Entradas x Saídas — últimos 12 meses</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <span><i class="ti ti-chart-bar"></i> VISÃO ANUAL ${anoAtual}</span>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-faint)">
+          <span>Opções de Visualização</span>
+          <select id="visaoAnualTipoSelect" class="fi" style="width:auto;padding:4px 10px;font-size:12px">
+            <option value="barra" ${state.visaoAnualTipo === 'barra' ? 'selected' : ''}>Barras</option>
+            <option value="linha" ${state.visaoAnualTipo === 'linha' ? 'selected' : ''}>Linha</option>
+          </select>
+        </div>
+      </div>
       <div class="chart-wrap"><canvas id="chartLinha"></canvas></div>
     </div>
-    <div class="chart-card">
-      <div class="card-title"><i class="ti ti-chart-pie"></i> Para onde foi o dinheiro em ${mesLabelFmt(state.mesAtual)}</div>
-      <div class="chart-wrap"><canvas id="chartPizza"></canvas></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      ${renderDivisaoSaldos()}
+      <div class="chart-card">
+        <div class="card-title"><i class="ti ti-chart-pie"></i> SAÍDA POR CATEGORIA</div>
+        <div class="chart-wrap"><canvas id="chartPizza"></canvas></div>
+      </div>
     </div>
   `;
 }
 
-function ultimosNMeses(n) {
-  const meses = [];
-  let m = state.mesAtual;
-  for (let i = n - 1; i >= 0; i--) meses.push(somarMeses(m, -i));
-  return meses;
-}
-
 function montarGraficos() {
-  const meses = ultimosNMeses(12);
+  const anoAtual = state.mesAtual.split('-')[0];
+  const meses = mesesDoAno(anoAtual);
   const entradasPorMes = meses.map((m) =>
     somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && t.natureza !== 'investimento' && t.data.startsWith(m)))
   );
@@ -538,13 +581,22 @@ function montarGraficos() {
   if (chartLinha) chartLinha.destroy();
   const ctxLinha = document.getElementById('chartLinha');
   if (ctxLinha) {
+    const ehBarra = state.visaoAnualTipo === 'barra';
     chartLinha = new Chart(ctxLinha, {
-      type: 'line',
+      type: ehBarra ? 'bar' : 'line',
       data: {
-        labels: meses.map((m) => mesLabelFmt(m).replace(' de ', '/')),
+        labels: meses.map((m) => mesAbrevFmt(m)),
         datasets: [
-          { label: 'Entradas', data: entradasPorMes, borderColor: '#6fc43a', backgroundColor: 'rgba(111,196,58,0.1)', tension: .3, fill: true },
-          { label: 'Saídas', data: saidasPorMes, borderColor: '#e05252', backgroundColor: 'rgba(224,82,82,0.1)', tension: .3, fill: true },
+          {
+            label: 'Entradas', data: entradasPorMes,
+            borderColor: '#6fc43a', backgroundColor: ehBarra ? '#6fc43a' : 'rgba(111,196,58,0.1)',
+            tension: .3, fill: !ehBarra,
+          },
+          {
+            label: 'Saídas', data: saidasPorMes,
+            borderColor: '#e05252', backgroundColor: ehBarra ? '#e05252' : 'rgba(224,82,82,0.1)',
+            tension: .3, fill: !ehBarra,
+          },
         ],
       },
       options: {
@@ -565,9 +617,6 @@ function montarGraficos() {
   if (chartPizza) chartPizza.destroy();
   const ctxPizza = document.getElementById('chartPizza');
   if (ctxPizza) {
-    if (!labels.length) {
-      ctxPizza.getContext('2d').font = '13px sans-serif';
-    }
     chartPizza = new Chart(ctxPizza, {
       type: 'doughnut',
       data: { labels, datasets: [{ data: valores, backgroundColor: cores, borderWidth: 0 }] },
@@ -688,6 +737,12 @@ function ligarEventosPagina() {
 
   const abrirExportBtn = document.getElementById('abrirExportModalBtn');
   if (abrirExportBtn) abrirExportBtn.addEventListener('click', abrirExportModal);
+
+  const visaoSelect = wrap.querySelector('#visaoAnualTipoSelect');
+  if (visaoSelect) visaoSelect.addEventListener('change', () => {
+    state.visaoAnualTipo = visaoSelect.value;
+    montarGraficos();
+  });
 
   // cat-tabs Entradas/Saídas
   wrap.querySelectorAll('[data-esview]').forEach((b) => b.addEventListener('click', () => {
@@ -826,12 +881,39 @@ document.getElementById('confirmModalOk').addEventListener('click', async () => 
       await sb.from('transacoes').delete().eq('id', id);
       state.transacoes = state.transacoes.filter((t) => t.id !== id);
       state.aportesReserva = state.aportesReserva.filter((t) => t.id !== id);
+      marcarEdicao();
+      showToast('Item excluído.');
+      renderPagina();
+    } else if (type === 'conta_bancaria') {
+      const { error } = await sb.from('contas_conectadas').delete().eq('id', id);
+      if (error) throw error;
+      marcarEdicao();
+      showToast('Conta bancária removida.');
+      carregarContasBancarias();
+    } else if (type === 'carteira') {
+      if (state.carteiras.length <= 1) {
+        showToast('Não é possível excluir a única carteira.', 'error');
+      } else {
+        const { error } = await sb.from('carteiras').delete().eq('id', id);
+        if (error) throw error;
+        state.carteiras = state.carteiras.filter((c) => c.id !== id);
+        if (state.carteiraAtualId === id) {
+          state.carteiraAtualId = state.carteiras[0].id;
+          await carregarDadosCarteira();
+          renderPagina();
+        }
+        renderCarteirasSettings();
+        renderCarteiraSelect();
+        marcarEdicao();
+        showToast('Carteira excluída.');
+      }
     }
-    marcarEdicao();
-    showToast('Item excluído.');
-    renderPagina();
   } catch (err) {
-    showToast('Erro ao excluir.', 'error');
+    if (type === 'carteira') {
+      showToast('Não foi possível excluir: existem transações ou contas conectadas vinculadas a esta carteira.', 'error');
+    } else {
+      showToast('Erro ao excluir.', 'error');
+    }
   } finally {
     showLoading(false);
     state.pendingDelete = null;
@@ -866,6 +948,7 @@ function renderCarteirasSettings() {
     <div class="carteira-row">
       <input class="fi" style="flex:1" data-carteira-nome="${c.id}" value="${escapeHtml(c.nome)}">
       <span class="carteira-badge">${c.tipo}</span>
+      <button class="del-btn" data-del-carteira="${c.id}" data-label="${escapeHtml(c.nome)}"><i class="ti ti-trash"></i></button>
     </div>`).join('');
   list.querySelectorAll('[data-carteira-nome]').forEach((input) => {
     let t;
@@ -880,6 +963,9 @@ function renderCarteirasSettings() {
       }, 500);
     });
   });
+  list.querySelectorAll('[data-del-carteira]').forEach((b) => b.addEventListener('click', () => {
+    abrirConfirmDelete('carteira', b.dataset.delCarteira, b.dataset.label);
+  }));
 }
 
 // ============================================================
@@ -895,14 +981,23 @@ async function carregarContasBancarias() {
     list.innerHTML = '<div class="empty" style="padding:12px 0">Nenhuma conta conectada nesta carteira ainda.</div>';
     return;
   }
-  list.innerHTML = contas.map((c) => `
+  list.innerHTML = contas.map((c) => {
+    const badgePessoa = (c.tipo_conta === 'PF' || c.tipo_conta === 'PJ')
+      ? `<span class="carteira-badge">${c.tipo_conta}</span>` : '';
+    return `
     <div class="conta-row">
       <div class="conta-info">
-        <div class="conta-nome">${escapeHtml(c.banco)} ${c.apelido ? '· ' + escapeHtml(c.apelido) : ''}</div>
-        <div class="conta-detalhe">${c.pluggy_account_id ? (c.tipo_conta || 'conta') : 'sincronizando...'} ${c.ultima_sincronizacao ? '· atualizado ' + new Date(c.ultima_sincronizacao).toLocaleString('pt-BR') : ''}</div>
+        <div class="conta-nome">${escapeHtml(c.banco)} ${c.apelido ? '· ' + escapeHtml(c.apelido) : ''} ${badgePessoa}</div>
+        <div class="conta-detalhe">${c.pluggy_account_id ? 'conectado' : 'sincronizando...'} ${c.ultima_sincronizacao ? '· atualizado ' + new Date(c.ultima_sincronizacao).toLocaleString('pt-BR') : ''}</div>
       </div>
       <div class="conta-saldo">${c.pluggy_account_id ? fmtMoeda(c.saldo_atual) : '—'}</div>
-    </div>`).join('');
+      <button class="del-btn" data-del-conta="${c.id}" data-label="${escapeHtml(c.banco)}"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-del-conta]').forEach((b) => b.addEventListener('click', () => {
+    abrirConfirmDelete('conta_bancaria', b.dataset.delConta, b.dataset.label);
+  }));
 }
 
 async function conectarBanco() {
@@ -910,6 +1005,7 @@ async function conectarBanco() {
     showToast('Widget da Pluggy não carregou. Verifica sua conexão e tenta de novo.', 'error');
     return;
   }
+  const tipoPessoa = confirm('Essa conta bancária é Pessoa Jurídica (PJ)?\n\nOK = PJ  ·  Cancelar = PF') ? 'PJ' : 'PF';
   showLoading(true);
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -931,7 +1027,7 @@ async function conectarBanco() {
             carteira_id: state.carteiraAtualId,
             pluggy_item_id: itemData.item.id,
             banco: bancoNome,
-            tipo_conta: 'corrente',
+            tipo_conta: tipoPessoa, // 'PF' ou 'PJ', informado antes de abrir o widget
           });
           if (insErr) throw insErr;
           showToast(`${bancoNome} conectado! A sincronização das transações pode levar alguns instantes.`);
