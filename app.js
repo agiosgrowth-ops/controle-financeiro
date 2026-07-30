@@ -56,6 +56,22 @@ function mesesDoAno(ano) {
 function fmtMoeda(v) {
   return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
+// Interpreta o que foi digitado num campo de valor:
+// - "+90" ou "+90,00" → soma 90 ao valor atual
+// - "-30" → subtrai 30 do valor atual
+// - "200" ou "200,50" → substitui pelo valor digitado
+// - "" (vazio) → zera
+function parseValorInput(raw, valorAtual) {
+  const s = String(raw).trim().replace(',', '.');
+  if (s === '') return 0;
+  if (/^[+-]/.test(s)) {
+    const delta = parseFloat(s);
+    if (isNaN(delta)) return valorAtual;
+    return Math.round((valorAtual + delta) * 100) / 100;
+  }
+  const v = parseFloat(s);
+  return isNaN(v) ? valorAtual : v;
+}
 function showToast(msg, type = 'success') {
   const wrap = document.getElementById('toastWrap');
   const el = document.createElement('div');
@@ -412,7 +428,7 @@ function renderLinhaLancamento(t) {
   <div class="tbl-row" draggable="true" data-row-id="${t.id}" data-row-type="transacao">
     <span class="drag-handle"><i class="ti ti-grip-vertical"></i></span>
     <input class="fi" data-field="descricao" data-id="${t.id}" value="${escapeHtml(t.descricao)}" placeholder="Descrição">
-    <input class="fi fi-val" data-field="valor" data-id="${t.id}" type="number" step="0.01" value="${t.valor}">
+    <input class="fi fi-val" data-field="valor" data-id="${t.id}" type="text" inputmode="decimal" value="${t.valor}" title="Digite um número para substituir, ou +90 / -30 para somar ou subtrair do valor atual">
     <button class="del-btn" data-del="transacao" data-id="${t.id}" data-label="${escapeHtml(t.descricao)}"><i class="ti ti-trash"></i></button>
   </div>`;
 }
@@ -452,7 +468,7 @@ function renderLinhaInvestimento(t, total) {
         <input class="div-name-in" data-field="descricao" data-id="${t.id}" value="${escapeHtml(t.descricao)}" placeholder="Nome do investimento">
         <button class="del-btn" data-del="transacao" data-id="${t.id}" data-label="${escapeHtml(t.descricao)}"><i class="ti ti-trash"></i></button>
       </div>
-      <input class="div-val-in" data-field="valor" data-id="${t.id}" type="number" step="0.01" value="${t.valor}">
+      <input class="div-val-in" data-field="valor" data-id="${t.id}" type="text" inputmode="decimal" value="${t.valor}" title="Digite um número para substituir, ou +90 / -30 para somar ou subtrair do valor atual">
       <div class="pbar-bg"><div class="pbar" style="width:${pct}%"></div></div>
       <span style="font-size:11px;color:var(--text-faint)">${pct}% da carteira</span>
       <input class="div-bank-in" data-field="observacao" data-id="${t.id}" value="${t.observacao && t.observacao !== '__reserva__' ? escapeHtml(t.observacao) : ''}" placeholder="Instituição / corretora (opcional)">
@@ -761,17 +777,27 @@ function ligarEventosPagina() {
     criarTransacao({ tipo: 'entrada', natureza: 'investimento', descricao: 'Novo aporte', valor: 0, observacao: '__reserva__' })
   ));
 
-  // edição inline (debounce simples via blur + input imediato no estado local)
+  // edição inline
   wrap.querySelectorAll('[data-field]').forEach((input) => {
-    let timer;
-    input.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value), 500);
-    });
-    input.addEventListener('blur', () => {
-      clearTimeout(timer);
-      salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value);
-    });
+    if (input.dataset.field === 'valor') {
+      // Campos de valor: só resolve (soma/subtrai/substitui) ao sair do campo ou apertar Enter,
+      // para permitir digitar "+90" sem disparar salvamento no meio da digitação.
+      const commit = () => salvarCampoTransacaoValor(input);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      });
+      input.addEventListener('blur', commit);
+    } else {
+      let timer;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value), 500);
+      });
+      input.addEventListener('blur', () => {
+        clearTimeout(timer);
+        salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value);
+      });
+    }
   });
 
   // meta da reserva
@@ -839,6 +865,21 @@ async function salvarCampoTransacao(id, field, value) {
   marcarEdicao();
   // Reflete totais/percentuais sem perder o foco do campo sendo digitado
   if (field === 'valor') atualizarTotaisSemRerender();
+}
+
+async function salvarCampoTransacaoValor(input) {
+  const id = input.dataset.id;
+  const t = state.transacoes.find((x) => x.id === id);
+  if (!t) return;
+  const valorAtual = Number(t.valor) || 0;
+  const novoValor = parseValorInput(input.value, valorAtual);
+  input.value = novoValor;
+  if (novoValor === valorAtual) return; // nada mudou, não precisa salvar
+  t.valor = novoValor;
+  const { error } = await sb.from('transacoes').update({ valor: novoValor }).eq('id', id);
+  if (error) { showToast('Erro ao salvar alteração.', 'error'); return; }
+  marcarEdicao();
+  atualizarTotaisSemRerender();
 }
 
 function atualizarTotaisSemRerender() {
