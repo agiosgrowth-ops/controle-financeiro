@@ -12,16 +12,16 @@ let state = {
   carteiraAtualId: null,
   abas: ['entradas_saidas', 'investimentos', 'reserva_emergencia', 'analises'],
   abaAtual: 'entradas_saidas',
-  esView: 'entrada', // sub-view dentro de Entradas/Saídas
-  mesAtual: new Date().toISOString().slice(0, 7), // 'YYYY-MM' — mês navegável (Entradas/Saídas e Análises)
+  esView: 'entrada',
+  mesAtual: new Date().toISOString().slice(0, 7),
   transacoes: [],
   metaReserva: null,
   aportesReserva: [],
   tema: 'escuro',
   appName: 'Meu Financeiro',
-  pendingDelete: null, // { type, id, label }
+  pendingDelete: null,
   authMode: 'login',
-  visaoAnualTipo: 'barra', // 'barra' | 'linha' — tipo de gráfico da Visão Anual
+  visaoAnualTipo: 'barra',
 };
 
 const ABA_META = {
@@ -50,18 +50,9 @@ function mesesDoAno(ano) {
   return Array.from({ length: 12 }, (_, i) => `${ano}-${String(i + 1).padStart(2, '0')}`);
 }
 
-// ============================================================
-// UTIL
-// ============================================================
 function fmtMoeda(v) {
   return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-// Interpreta o que foi digitado num campo de valor:
-// - "+90" ou "-30" (string toda começando com sinal) → soma/subtrai do valor já salvo
-// - "800+100", "90-30+10" (expressão com números já visíveis + operação) → soma os termos
-//   e usa o resultado direto (cobre o caso comum de digitar "+100" no final do valor que já estava lá)
-// - "200" → substitui pelo valor digitado
-// - "" (vazio) → zera
 function parseValorInput(raw, valorAtual) {
   let s = String(raw).trim().replace(/\s+/g, '').replace(/,/g, '.');
   if (s === '') return 0;
@@ -96,9 +87,6 @@ function marcarEdicao() {
   document.getElementById('lastEditChip').textContent = 'Última edição: ' + nowFmt();
 }
 
-// ============================================================
-// TEMA
-// ============================================================
 function aplicarTema(tema) {
   state.tema = tema;
   document.documentElement.setAttribute('data-theme', tema);
@@ -112,9 +100,6 @@ document.getElementById('themeToggleBtn').addEventListener('click', () => {
   if (state.user) salvarPreferencias({ tema: novo });
 });
 
-// ============================================================
-// AUTENTICAÇÃO
-// ============================================================
 const authTitle = document.getElementById('authTitle');
 const authSub = document.getElementById('authSub');
 const authSwitch = document.getElementById('authSwitch');
@@ -182,9 +167,6 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// ============================================================
-// BOOT — carrega tudo após login
-// ============================================================
 async function bootAfterAuth() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return;
@@ -211,7 +193,6 @@ async function carregarPreferencias() {
     aplicarTema(data.tema);
     if (Array.isArray(data.ordem_abas) && data.ordem_abas.length) {
       state.abas = data.ordem_abas.filter((a) => ABA_META[a]);
-      // garante que abas novas do sistema apareçam mesmo se não estiverem salvas ainda
       Object.keys(ABA_META).forEach((a) => { if (!state.abas.includes(a)) state.abas.push(a); });
     }
   }
@@ -225,7 +206,6 @@ async function carregarCarteiras() {
   if (error) { showToast('Erro ao carregar carteiras.', 'error'); return; }
   state.carteiras = data || [];
   if (!state.carteiras.length) {
-    // primeira vez — cria carteira padrão
     const { data: nova } = await sb.from('carteiras').insert({
       user_id: state.user.id, nome: 'Pessoal', tipo: 'PF', ordem: 0,
     }).select().single();
@@ -253,9 +233,6 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// ============================================================
-// CARREGAR DADOS DA CARTEIRA ATUAL
-// ============================================================
 async function carregarDadosCarteira() {
   showLoading(true);
   try {
@@ -280,12 +257,7 @@ async function carregarDadosCarteira() {
   } finally {
     showLoading(false);
   }
-}
-
-// ============================================================
-// ABAS (arrastáveis)
-// ============================================================
-function renderTopNav() {
+}function renderTopNav() {
   const nav = document.getElementById('topNav');
   nav.innerHTML = state.abas.map((aba) => {
     const m = ABA_META[aba];
@@ -308,7 +280,6 @@ function renderTopNav() {
   });
 }
 
-// ── Drag-and-drop genérico (reordenar filhos de um container) ──
 function habilitarDrag(el, container, selector, onDrop) {
   el.addEventListener('dragstart', () => el.classList.add('dragging'));
   el.addEventListener('dragend', () => {
@@ -333,10 +304,6 @@ function habilitarDrag(el, container, selector, onDrop) {
   });
 }
 
-// ============================================================
-// BARRA DE MÊS — visível apenas em Entradas/Saídas e Análises
-// (Investimentos e Reserva são saldo acumulado, não fazem sentido por mês)
-// ============================================================
 function renderMesBar() {
   const visivel = ['entradas_saidas', 'analises'].includes(state.abaAtual);
   document.getElementById('monthBarWrap').style.display = visivel ? 'flex' : 'none';
@@ -358,9 +325,6 @@ document.getElementById('mesHojeBtn').addEventListener('click', () => {
   renderPagina();
 });
 
-// ============================================================
-// RENDER DE PÁGINA (roteador simples entre abas)
-// ============================================================
 function renderPagina() {
   const wrap = document.getElementById('pageWrap');
   renderMesBar();
@@ -372,11 +336,6 @@ function renderPagina() {
   if (state.abaAtual === 'analises') montarGraficos();
 }
 
-// ============================================================
-// ENTRADAS & SAÍDAS
-// ============================================================
-// mesFiltro: string 'YYYY-MM' para restringir por mês, ou null para trazer tudo
-// (usado pelos gráficos, que precisam do histórico completo)
 function listaPorTipoNatureza(tipo, natureza, mesFiltro = state.mesAtual) {
   return state.transacoes.filter((t) =>
     t.tipo === tipo && t.natureza === natureza && t.natureza !== 'investimento' &&
@@ -437,9 +396,6 @@ function renderLinhaLancamento(t) {
   </div>`;
 }
 
-// ============================================================
-// INVESTIMENTOS
-// ============================================================
 function renderInvestimentos() {
   const itens = state.transacoes
     .filter((t) => t.natureza === 'investimento' && t.observacao !== '__reserva__')
@@ -478,12 +434,7 @@ function renderLinhaInvestimento(t, total) {
       <input class="div-bank-in" data-field="observacao" data-id="${t.id}" value="${t.observacao && t.observacao !== '__reserva__' ? escapeHtml(t.observacao) : ''}" placeholder="Instituição / corretora (opcional)">
     </div>
   </div>`;
-}
-
-// ============================================================
-// RESERVA DE EMERGÊNCIA
-// ============================================================
-function renderReserva() {
+}function renderReserva() {
   const valorAtual = somaLista(state.aportesReserva);
   const meta = state.metaReserva?.valor_limite || 0;
   const pct = meta > 0 ? Math.min(100, (valorAtual / meta) * 100).toFixed(1) : '0.0';
@@ -524,9 +475,6 @@ function renderReserva() {
   `;
 }
 
-// ============================================================
-// ANÁLISES — gráficos de evolução anual e composição de gastos
-// ============================================================
 let chartLinha = null;
 let chartPizza = null;
 
@@ -622,4 +570,469 @@ function montarGraficos() {
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: { y: { ticks: { callback: (v) => 'R$' + v } } },
-        plugins: { legend: {
+        plugins: { legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--text') } } },
+      },
+    });
+  }
+
+  const saidasDoMes = state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(state.mesAtual) && t.valor > 0);
+  const porDescricao = {};
+  saidasDoMes.forEach((t) => { porDescricao[t.descricao] = (porDescricao[t.descricao] || 0) + Number(t.valor); });
+  const labels = Object.keys(porDescricao);
+  const valores = Object.values(porDescricao);
+  const cores = ['#4d9ef5','#6fc43a','#ffc36b','#e05252','#7bbcff','#b58aef','#4dd0c4','#f5a84d','#f56ba0','#8892aa'];
+
+  if (chartPizza) chartPizza.destroy();
+  const ctxPizza = document.getElementById('chartPizza');
+  if (ctxPizza) {
+    chartPizza = new Chart(ctxPizza, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: valores, backgroundColor: cores, borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: getComputedStyle(document.documentElement).getPropertyValue('--text'), boxWidth: 12 } } },
+      },
+    });
+  }
+}function abrirExportModal() {
+  document.getElementById('exportMesInicio').value = state.mesAtual;
+  document.getElementById('exportMesFim').value = state.mesAtual;
+  document.getElementById('exportModal').classList.add('show');
+}
+document.getElementById('exportModalCancel').addEventListener('click', () =>
+  document.getElementById('exportModal').classList.remove('show'));
+document.getElementById('exportModalGerar').addEventListener('click', () => {
+  const ini = document.getElementById('exportMesInicio').value;
+  const fim = document.getElementById('exportMesFim').value;
+  if (!ini || !fim) { showToast('Escolha os dois meses.', 'error'); return; }
+  if (ini > fim) { showToast('O mês inicial não pode ser depois do final.', 'error'); return; }
+  document.getElementById('exportModal').classList.remove('show');
+  if (ini === fim) exportarPdfMes(ini);
+  else exportarPdfPeriodo(ini, fim);
+});
+
+function cabecalhoPdf(doc, subtitulo) {
+  const carteira = state.carteiras.find((c) => c.id === state.carteiraAtualId);
+  doc.setFontSize(16);
+  doc.text(state.appName, 14, 18);
+  doc.setFontSize(11);
+  doc.setTextColor(100);
+  doc.text(`${subtitulo} — Carteira: ${carteira ? carteira.nome : ''}`, 14, 25);
+  doc.setTextColor(0);
+}
+
+function exportarPdfMes(mesStr) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  cabecalhoPdf(doc, `Relatório de ${mesLabelFmt(mesStr)}`);
+
+  const grupos = [
+    ['Entradas Fixas', listaPorTipoNatureza('entrada', 'fixo', mesStr)],
+    ['Entradas Variáveis', listaPorTipoNatureza('entrada', 'variavel', mesStr)],
+    ['Saídas Fixas', listaPorTipoNatureza('saida', 'fixo', mesStr)],
+    ['Saídas Variáveis', listaPorTipoNatureza('saida', 'variavel', mesStr)],
+  ];
+
+  let y = 34;
+  let algumGrupo = false;
+  grupos.forEach(([titulo, itens]) => {
+    if (!itens.length) return;
+    algumGrupo = true;
+    doc.autoTable({
+      startY: y,
+      head: [[titulo, 'Valor']],
+      body: itens.map((t) => [t.descricao, fmtMoeda(t.valor)]),
+      foot: [['Total', fmtMoeda(somaLista(itens))]],
+      theme: 'grid',
+      headStyles: { fillColor: [77, 158, 245] },
+      footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  });
+  if (!algumGrupo) doc.text('Nenhum lançamento neste mês.', 14, y);
+
+  doc.save(`relatorio-${mesStr}.pdf`);
+  showToast('PDF exportado.');
+}
+
+function exportarPdfPeriodo(mesIni, mesFim) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  cabecalhoPdf(doc, `Resumo de ${mesLabelFmt(mesIni)} até ${mesLabelFmt(mesFim)}`);
+
+  const meses = [];
+  let m = mesIni;
+  while (m <= mesFim) { meses.push(m); m = somarMeses(m, 1); }
+
+  const linhas = [];
+  let totalEntradas = 0, totalSaidas = 0, totalInvest = 0;
+  meses.forEach((mesStr) => {
+    const ent = somaLista(state.transacoes.filter((t) => t.tipo === 'entrada' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
+    const sai = somaLista(state.transacoes.filter((t) => t.tipo === 'saida' && t.natureza !== 'investimento' && t.data.startsWith(mesStr)));
+    const inv = somaLista(state.transacoes.filter((t) => t.natureza === 'investimento' && t.data.startsWith(mesStr)));
+    totalEntradas += ent; totalSaidas += sai; totalInvest += inv;
+    linhas.push([mesLabelFmt(mesStr), fmtMoeda(ent), fmtMoeda(sai), fmtMoeda(inv), fmtMoeda(ent - sai)]);
+  });
+
+  doc.autoTable({
+    startY: 34,
+    head: [['Mês', 'Entradas', 'Saídas', 'Investido', 'Saldo']],
+    body: linhas,
+    foot: [['Total do período', fmtMoeda(totalEntradas), fmtMoeda(totalSaidas), fmtMoeda(totalInvest), fmtMoeda(totalEntradas - totalSaidas)]],
+    theme: 'grid',
+    headStyles: { fillColor: [77, 158, 245] },
+    footStyles: { fillColor: [235, 235, 235], textColor: 0, fontStyle: 'bold' },
+    margin: { left: 14, right: 14 },
+  });
+
+  doc.save(`relatorio-${mesIni}-a-${mesFim}.pdf`);
+  showToast('PDF exportado.');
+}
+
+function ligarEventosPagina() {
+  const wrap = document.getElementById('pageWrap');
+
+  const abrirExportBtn = document.getElementById('abrirExportModalBtn');
+  if (abrirExportBtn) abrirExportBtn.addEventListener('click', abrirExportModal);
+
+  const visaoSelect = wrap.querySelector('#visaoAnualTipoSelect');
+  if (visaoSelect) visaoSelect.addEventListener('change', () => {
+    state.visaoAnualTipo = visaoSelect.value;
+    montarGraficos();
+  });
+
+  wrap.querySelectorAll('[data-esview]').forEach((b) => b.addEventListener('click', () => {
+    state.esView = b.dataset.esview;
+    renderPagina();
+  }));
+
+  wrap.querySelectorAll('[data-add-lancamento]').forEach((b) => b.addEventListener('click', () =>
+    criarTransacao({ tipo: b.dataset.tipo, natureza: b.dataset.natureza, descricao: 'Novo item', valor: 0 })
+  ));
+  wrap.querySelectorAll('[data-add-investimento]').forEach((b) => b.addEventListener('click', () =>
+    criarTransacao({ tipo: 'entrada', natureza: 'investimento', descricao: 'Novo investimento', valor: 0 })
+  ));
+  wrap.querySelectorAll('[data-add-aporte]').forEach((b) => b.addEventListener('click', () =>
+    criarTransacao({ tipo: 'entrada', natureza: 'investimento', descricao: 'Novo aporte', valor: 0, observacao: '__reserva__' })
+  ));
+
+  wrap.querySelectorAll('[data-field]').forEach((input) => {
+    if (input.dataset.field === 'valor') {
+      input.addEventListener('blur', () => salvarCampoTransacaoValor(input));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      });
+    } else {
+      let timer;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value), 500);
+      });
+      input.addEventListener('blur', () => {
+        clearTimeout(timer);
+        salvarCampoTransacao(input.dataset.id, input.dataset.field, input.value);
+      });
+    }
+  });
+
+  const reservaInput = document.getElementById('reservaMetaInput');
+  if (reservaInput) {
+    let t;
+    reservaInput.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => salvarMetaReserva(reservaInput.value), 500);
+    });
+  }
+
+  wrap.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
+    abrirConfirmDelete(b.dataset.del, b.dataset.id, b.dataset.label);
+  }));
+
+  wrap.querySelectorAll('[data-row-id]').forEach((row) => {
+    const container = row.parentElement;
+    const selector = `[data-row-type="${row.dataset.rowType}"]`;
+    habilitarDrag(row, container, selector, (novaOrdem) => {
+      novaOrdem.forEach((el, idx) => salvarOrdemTransacao(el.dataset.rowId, idx));
+    });
+  });
+}
+
+async function criarTransacao({ tipo, natureza, descricao, valor, observacao = null }) {
+  showLoading(true);
+  try {
+    const maxOrdem = Math.max(0, ...state.transacoes.map((t) => t.ordem || 0));
+    const dataLancamento = natureza === 'investimento'
+      ? new Date().toISOString().split('T')[0]
+      : `${state.mesAtual}-01`;
+    const { data, error } = await sb.from('transacoes').insert({
+      carteira_id: state.carteiraAtualId,
+      descricao, valor, tipo, natureza, observacao,
+      data: dataLancamento,
+      origem: 'manual', status: 'confirmado', ordem: maxOrdem + 1,
+    }).select().single();
+    if (error) throw error;
+    state.transacoes.push(data);
+    if (observacao === '__reserva__') state.aportesReserva.push(data);
+    marcarEdicao();
+    renderPagina();
+    showToast('Item adicionado.');
+  } catch (err) {
+    showToast('Erro ao adicionar item.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function salvarCampoTransacao(id, field, value) {
+  const val = field === 'valor' ? Number(value || 0) : value;
+  const t = state.transacoes.find((x) => x.id === id);
+  if (t) t[field] = val;
+  const { error } = await sb.from('transacoes').update({ [field]: val }).eq('id', id);
+  if (error) { showToast('Erro ao salvar alteração.', 'error'); return; }
+  marcarEdicao();
+}
+
+async function salvarCampoTransacaoValor(input) {
+  const id = input.dataset.id;
+  const t = state.transacoes.find((x) => x.id === id);
+  if (!t) return;
+
+  const novoValor = parseValorInput(input.value, Number(t.valor) || 0);
+
+  input.value = novoValor;
+  t.valor = novoValor;
+
+  renderPagina();
+
+  const { error } = await sb.from('transacoes').update({ valor: novoValor }).eq('id', id);
+  if (error) { showToast('Erro ao salvar valor.', 'error'); return; }
+  marcarEdicao();
+}
+
+async function salvarOrdemTransacao(id, ordem) {
+  const t = state.transacoes.find((x) => x.id === id);
+  if (t) t.ordem = ordem;
+  await sb.from('transacoes').update({ ordem }).eq('id', id);
+  marcarEdicao();
+}
+
+async function salvarMetaReserva(valor) {
+  const v = Number(valor || 0);
+  state.metaReserva.valor_limite = v;
+  await sb.from('metas').update({ valor_limite: v }).eq('id', state.metaReserva.id);
+  marcarEdicao();
+}function abrirConfirmDelete(type, id, label) {
+  state.pendingDelete = { type, id, label };
+  document.getElementById('confirmModalItemName').textContent = `"${label}"`;
+  document.getElementById('confirmModal').classList.add('show');
+}
+document.getElementById('confirmModalCancel').addEventListener('click', () => {
+  state.pendingDelete = null;
+  document.getElementById('confirmModal').classList.remove('show');
+});
+document.getElementById('confirmModalOk').addEventListener('click', async () => {
+  if (!state.pendingDelete) return;
+  const { type, id } = state.pendingDelete;
+  showLoading(true);
+  try {
+    if (type === 'transacao') {
+      await sb.from('transacoes').delete().eq('id', id);
+      state.transacoes = state.transacoes.filter((t) => t.id !== id);
+      state.aportesReserva = state.aportesReserva.filter((t) => t.id !== id);
+      marcarEdicao();
+      showToast('Item excluído.');
+      renderPagina();
+    } else if (type === 'conta_bancaria') {
+      const { error } = await sb.from('contas_conectadas').delete().eq('id', id);
+      if (error) throw error;
+      marcarEdicao();
+      showToast('Conta bancária removida.');
+      carregarContasBancarias();
+    } else if (type === 'carteira') {
+      if (state.carteiras.length <= 1) {
+        showToast('Não é possível excluir a única carteira.', 'error');
+      } else {
+        const { error } = await sb.from('carteiras').delete().eq('id', id);
+        if (error) throw error;
+        state.carteiras = state.carteiras.filter((c) => c.id !== id);
+        if (state.carteiraAtualId === id) {
+          state.carteiraAtualId = state.carteiras[0].id;
+          await carregarDadosCarteira();
+          renderPagina();
+        }
+        renderCarteirasSettings();
+        renderCarteiraSelect();
+        marcarEdicao();
+        showToast('Carteira excluída.');
+      }
+    }
+  } catch (err) {
+    if (type === 'carteira') {
+      showToast('Não foi possível excluir: existem transações ou contas conectadas vinculadas a esta carteira.', 'error');
+    } else {
+      showToast('Erro ao excluir.', 'error');
+    }
+  } finally {
+    showLoading(false);
+    state.pendingDelete = null;
+    document.getElementById('confirmModal').classList.remove('show');
+  }
+});
+
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  document.getElementById('settingsAppName').value = state.appName;
+  document.getElementById('appTitleDisplay').textContent = state.appName;
+  atualizarThemeOpts();
+  renderCarteirasSettings();
+  carregarContasBancarias();
+  document.getElementById('settingsModal').classList.add('show');
+});
+document.getElementById('settingsClose').addEventListener('click', () =>
+  document.getElementById('settingsModal').classList.remove('show'));
+
+function atualizarThemeOpts() {
+  document.getElementById('themeOptEscuro').classList.toggle('on', state.tema === 'escuro');
+  document.getElementById('themeOptClaro').classList.toggle('on', state.tema === 'claro');
+}
+document.getElementById('themeOptEscuro').addEventListener('click', () => { aplicarTema('escuro'); atualizarThemeOpts(); });
+document.getElementById('themeOptClaro').addEventListener('click', () => { aplicarTema('claro'); atualizarThemeOpts(); });
+
+function renderCarteirasSettings() {
+  const list = document.getElementById('settingsCarteirasList');
+  list.innerHTML = state.carteiras.map((c) => `
+    <div class="carteira-row">
+      <input class="fi" style="flex:1" data-carteira-nome="${c.id}" value="${escapeHtml(c.nome)}">
+      <span class="carteira-badge">${c.tipo}</span>
+      <button class="del-btn" data-del-carteira="${c.id}" data-label="${escapeHtml(c.nome)}"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+  list.querySelectorAll('[data-carteira-nome]').forEach((input) => {
+    let t;
+    input.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        await sb.from('carteiras').update({ nome: input.value }).eq('id', input.dataset.carteiraNome);
+        const c = state.carteiras.find((x) => x.id === input.dataset.carteiraNome);
+        if (c) c.nome = input.value;
+        renderCarteiraSelect();
+        marcarEdicao();
+      }, 500);
+    });
+  });
+  list.querySelectorAll('[data-del-carteira]').forEach((b) => b.addEventListener('click', () => {
+    abrirConfirmDelete('carteira', b.dataset.delCarteira, b.dataset.label);
+  }));
+}
+
+async function carregarContasBancarias() {
+  const list = document.getElementById('settingsContasList');
+  list.innerHTML = '<div class="empty" style="padding:12px 0"><i class="ti ti-loader"></i> Carregando...</div>';
+  const { data: contas, error } = await sb.from('contas_conectadas')
+    .select('*').eq('carteira_id', state.carteiraAtualId).eq('ativa', true);
+  if (error) { list.innerHTML = '<div class="empty" style="padding:12px 0">Erro ao carregar contas.</div>'; return; }
+  if (!contas.length) {
+    list.innerHTML = '<div class="empty" style="padding:12px 0">Nenhuma conta conectada nesta carteira ainda.</div>';
+    return;
+  }
+  list.innerHTML = contas.map((c) => {
+    const badgePessoa = (c.tipo_conta === 'PF' || c.tipo_conta === 'PJ')
+      ? `<span class="carteira-badge">${c.tipo_conta}</span>` : '';
+    return `
+    <div class="conta-row">
+      <div class="conta-info">
+        <div class="conta-nome">${escapeHtml(c.banco)} ${c.apelido ? '· ' + escapeHtml(c.apelido) : ''} ${badgePessoa}</div>
+        <div class="conta-detalhe">${c.pluggy_account_id ? 'conectado' : 'sincronizando...'} ${c.ultima_sincronizacao ? '· atualizado ' + new Date(c.ultima_sincronizacao).toLocaleString('pt-BR') : ''}</div>
+      </div>
+      <div class="conta-saldo">${c.pluggy_account_id ? fmtMoeda(c.saldo_atual) : '—'}</div>
+      <button class="del-btn" data-del-conta="${c.id}" data-label="${escapeHtml(c.banco)}"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-del-conta]').forEach((b) => b.addEventListener('click', () => {
+    abrirConfirmDelete('conta_bancaria', b.dataset.delConta, b.dataset.label);
+  }));
+}
+
+async function conectarBanco() {
+  if (typeof PluggyConnect === 'undefined') {
+    showToast('Widget da Pluggy não carregou. Verifica sua conexão e tenta de novo.', 'error');
+    return;
+  }
+  const tipoPessoa = confirm('Essa conta bancária é Pessoa Jurídica (PJ)?\n\nOK = PJ  ·  Cancelar = PF') ? 'PJ' : 'PF';
+  showLoading(true);
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${SUPABASE_CONFIG.url}/functions/v1/pluggy-connect-token`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const result = await res.json();
+    if (!res.ok || !result.accessToken) throw new Error(result.error || 'Falha ao gerar token de conexão.');
+
+    const pluggyConnect = new PluggyConnect({
+      connectToken: result.accessToken,
+      includeSandbox: true,
+      onSuccess: async (itemData) => {
+        showLoading(true);
+        try {
+          const bancoNome = itemData.item?.connector?.name || 'Banco';
+          const { error: insErr } = await sb.from('contas_conectadas').insert({
+            carteira_id: state.carteiraAtualId,
+            pluggy_item_id: itemData.item.id,
+            banco: bancoNome,
+            tipo_conta: tipoPessoa,
+          });
+          if (insErr) throw insErr;
+          showToast(`${bancoNome} conectado! A sincronização das transações pode levar alguns instantes.`);
+          marcarEdicao();
+          carregarContasBancarias();
+        } catch (err) {
+          showToast('Conta autorizada, mas houve erro ao vincular à carteira.', 'error');
+        } finally {
+          showLoading(false);
+        }
+      },
+      onError: (err) => {
+        console.error('Erro Pluggy Connect:', err);
+        showToast('A conexão bancária foi cancelada ou falhou.', 'error');
+      },
+    });
+    pluggyConnect.init();
+  } catch (err) {
+    showToast('Erro ao iniciar conexão bancária.', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+document.getElementById('conectarBancoBtn').addEventListener('click', conectarBanco);
+
+document.getElementById('addCarteiraBtn').addEventListener('click', async () => {
+  const tipo = confirm('Clique OK para PJ, ou Cancelar para PF.') ? 'PJ' : 'PF';
+  const nome = tipo === 'PJ' ? 'Nova Carteira PJ' : 'Nova Carteira PF';
+  const { data } = await sb.from('carteiras').insert({
+    user_id: state.user.id, nome, tipo, ordem: state.carteiras.length,
+  }).select().single();
+  state.carteiras.push(data);
+  renderCarteirasSettings();
+  renderCarteiraSelect();
+  marcarEdicao();
+  showToast('Carteira criada.');
+});
+
+document.getElementById('settingsSave').addEventListener('click', () => {
+  state.appName = document.getElementById('settingsAppName').value.trim() || 'Meu Financeiro';
+  document.getElementById('appTitleDisplay').textContent = state.appName;
+  localStorage.setItem('cf_app_name', state.appName);
+  document.getElementById('settingsModal').classList.remove('show');
+  showToast('Configurações salvas.');
+});
+
+(async function init() {
+  aplicarTema(localStorage.getItem('cf_tema') || 'escuro');
+  state.appName = localStorage.getItem('cf_app_name') || 'Meu Financeiro';
+  document.getElementById('appTitleDisplay').textContent = state.appName;
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await bootAfterAuth();
+  }
+})();
